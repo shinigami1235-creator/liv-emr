@@ -1,0 +1,16 @@
+{
+  "name": "Liv EMR",
+  "short_name": "Liv EMR",
+  "description": "Patient records, bookings and stock for Liv Clinic.",
+  "start_url": "./#/today",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f4f2ee",
+  "theme_color": "#1f3b34",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
