@@ -1,9 +1,9 @@
 // Bump VERSION on every release so the iPad picks up the new files.
-const VERSION = 'liv-emr-v1.0.0';
+const VERSION = 'liv-emr-v1.1.0';
 const FILES = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest',
   'js/app.js', 'js/router.js', 'js/db.js', 'js/ui.js', 'js/lock.js', 'js/common.js', 'js/stock.js', 'js/treatments.js', 'js/photos.js',
-  'js/pages/today.js', 'js/pages/patients.js', 'js/pages/visit.js', 'js/pages/calendar.js', 'js/pages/inventory.js', 'js/pages/settings.js',
+  'js/pages/today.js', 'js/pages/patients.js', 'js/pages/visit.js', 'js/pages/calendar.js', 'js/pages/inventory.js', 'js/pages/settings.js', 'js/pages/report.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
 ];
 

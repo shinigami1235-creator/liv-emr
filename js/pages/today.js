@@ -1,5 +1,5 @@
 import * as db from '../db.js';
-import { $, esc, dateStr, addDays, fmtDate, fmtDateLong, fmtTime, daysBetween, icons } from '../ui.js';
+import { $, esc, dateStr, addDays, fmtDate, fmtDateLong, fmtTime, daysBetween, baht, icons } from '../ui.js';
 import { displayName, pickPatient, checkIn, bookAppt, statusChip, endTime, copyText } from '../common.js';
 import { summarize, TYPES } from '../treatments.js';
 import { isLow, expiryState, shortStock } from '../stock.js';
@@ -25,6 +25,7 @@ export default async function today(root) {
   }
   const followups = Object.values(due).filter(tr => tr.nextDue >= addDays(t, -120)).sort((a, b) => a.nextDue.localeCompare(b.nextDue));
 
+  const chargedToday = treatments.filter(tr => tr.date === t && tr.price != null).reduce((s, tr) => s + tr.price, 0);
   const stockAlerts = items.filter(i => isLow(i) || expiryState(i)).sort((a, b) => a.name.localeCompare(b.name));
 
   const backupAge = settings.lastBackup ? daysBetween(settings.lastBackup.slice(0, 10), t) : null;
@@ -32,7 +33,7 @@ export default async function today(root) {
 
   root.innerHTML = `
     <header class="top">
-      <div><h1>Today</h1><p class="sub">${fmtDateLong(t)}${settings.doctor ? ' · ' + esc(settings.doctor) : ''}</p></div>
+      <div><h1>Today</h1><p class="sub">${fmtDateLong(t)}${settings.doctor ? ' · ' + esc(settings.doctor) : ''}${chargedToday ? ` · charged today ${baht(chargedToday)}` : ''}</p></div>
       <div class="actions">
         <button class="btn" data-act="book">${icons.calendar}Book</button>
         <button class="btn primary" data-act="walkin">${icons.check}Check in</button>

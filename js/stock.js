@@ -32,6 +32,19 @@ export function shortStock(it) {
   return it.track === 'units' ? `${fmtNum(it.qty)} U` : `${fmtNum(it.qty)} ${plural(it.unitLabel || 'piece', it.qty)}`;
 }
 
+// Buying price is per vial or piece. Cost and selling price are per unit of use:
+// per U for toxin used by the unit, per vial or piece otherwise.
+export function costPerUse(it) {
+  if (it.buyPrice == null || it.buyPrice === '') return null;
+  return it.track === 'units' ? it.buyPrice / (it.upv || 100) : it.buyPrice;
+}
+export function pricePerUse(it) {
+  return it.sellPrice == null || it.sellPrice === '' ? null : it.sellPrice;
+}
+export function useWord(it) {
+  return it.track === 'units' ? 'U' : (it.unitLabel || 'piece');
+}
+
 export function isLow(it) {
   if (it.reorderAt == null || it.reorderAt === '') return false;
   const level = it.track === 'units' ? it.reorderAt * (it.upv || 100) : it.reorderAt;
@@ -86,6 +99,7 @@ export async function applyChange(itemId, change, kind, extra = {}) {
   await db.put('stocklog', {
     itemId, at: new Date().toISOString(), change, kind,
     note: extra.note || '', patientId: extra.patientId || null, treatmentId: extra.treatmentId || null,
+    unitCost: extra.unitCost ?? null, spent: extra.spent ?? null, opening: !!extra.opening,
   });
   return it;
 }

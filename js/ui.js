@@ -78,6 +78,13 @@ export function num(v) {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 }
+export function baht(n) {
+  if (n == null || !Number.isFinite(n)) return '';
+  const neg = n < 0;
+  const v = Math.abs(Math.round(n * 100) / 100);
+  const txt = v.toLocaleString('en-US', { minimumFractionDigits: Number.isInteger(v) ? 0 : 2, maximumFractionDigits: 2 });
+  return `${neg ? '-' : ''}฿${txt}`;
+}
 export function fmtNum(n) {
   if (n == null) return '';
   return Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100);
@@ -173,4 +180,5 @@ export const icons = {
   chev: p('<path d="M9 5l7 7-7 7"/>'),
   left: p('<path d="M15 5l-7 7 7 7"/>'),
   right: p('<path d="M9 5l7 7-7 7"/>'),
+  report: p('<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'),
 };

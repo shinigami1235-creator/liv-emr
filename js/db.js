@@ -1,8 +1,8 @@
 // IndexedDB storage. Every record carries an id and updatedAt so a later
 // sync to the clinic's central computer can merge by record.
 const DB_NAME = 'liv-emr';
-const DB_VER = 1;
-export const STORES = ['meta', 'patients', 'visits', 'appts', 'treatments', 'photos', 'items', 'stocklog', 'devices'];
+const DB_VER = 2;
+export const STORES = ['meta', 'patients', 'visits', 'appts', 'treatments', 'photos', 'items', 'stocklog', 'devices', 'services', 'expenses'];
 const BY_PATIENT = ['visits', 'appts', 'treatments', 'photos'];
 
 let dbp = null;

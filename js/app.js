@@ -8,6 +8,7 @@ const NAV = [
   ['patients', 'Patients', icons.patients],
   ['calendar', 'Calendar', icons.calendar],
   ['inventory', 'Stock', icons.inventory],
+  ['report', 'Report', icons.report],
 ];
 
 function buildNav() {

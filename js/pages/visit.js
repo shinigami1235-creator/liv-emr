@@ -1,5 +1,5 @@
 import * as db from '../db.js';
-import { $, esc, toast, fmtDate, fmtTime, debounce, icons, confirmBox } from '../ui.js';
+import { $, esc, toast, fmtDate, fmtTime, debounce, baht, icons, confirmBox } from '../ui.js';
 import { displayName, patientMeta, alertBanners, finishVisit, bookAppt, statusChip } from '../common.js';
 import { treatmentLi, openTreatment } from '../treatments.js';
 import { thumbsHTML, hydrateThumbs, bindPhotoGrid, capturePhoto, newChart, chooseChartView } from '../photos.js';
@@ -48,7 +48,7 @@ export default async function visitPage(root, id) {
       </section>
     </div>
 
-    <section class="card" style="margin-top:16px"><h2>Treatments <button class="btn sm" data-act="addtreat">${icons.plus}Add treatment</button></h2>
+    <section class="card" style="margin-top:16px"><h2>Treatments ${treatments.some(t => t.price != null) ? `<span class="num muted small" style="margin-left:auto">Total ${baht(treatments.reduce((s, t) => s + (t.price || 0), 0))}</span>` : ''}<button class="btn sm" data-act="addtreat">${icons.plus}Add treatment</button></h2>
       <ul class="list">${treatments.length ? treatments.map(t => treatmentLi(t)).join('') : '<li class="empty">No treatment recorded on this visit.</li>'}</ul>
     </section>
 

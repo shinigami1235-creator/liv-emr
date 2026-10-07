@@ -1,6 +1,6 @@
 import * as db from './db.js';
-import { $, $$, esc, openModal, toast, dateStr, addDays, addMonths, fmtDate, num, fmtNum, icons, segHTML, bindSeg, segValue, confirmBox } from './ui.js';
-import { syncTreatmentStock, shortfalls, plural } from './stock.js';
+import { $, $$, esc, openModal, toast, dateStr, addDays, addMonths, fmtDate, num, fmtNum, baht, icons, segHTML, bindSeg, segValue, confirmBox } from './ui.js';
+import { syncTreatmentStock, shortfalls, plural, costPerUse, pricePerUse, useWord } from './stock.js';
 
 export const TYPES = {
   toxin: { label: 'Toxin', color: '#6b4fa0' },
@@ -8,7 +8,7 @@ export const TYPES = {
   device: { label: 'Laser / device', color: '#cf7419' },
   medication: { label: 'Medication', color: '#2f7d6d' },
   product: { label: 'Product sold', color: '#3f6aa8' },
-  other: { label: 'Other procedure', color: '#707773' },
+  other: { label: 'Service or procedure', color: '#707773' },
 };
 
 const TOXIN_AREAS = ['Forehead', 'Glabella', "Crow's feet left", "Crow's feet right", 'Bunny lines', 'Brow lift', 'Gummy smile', 'Lip flip', 'DAO', 'Chin', 'Masseter left', 'Masseter right', 'Platysma', 'Underarm', 'Trapezius', 'Calf'];
@@ -55,11 +55,12 @@ export function summarize(t) {
 export function treatmentLi(t, { showPatient = null } = {}) {
   const s = summarize(t);
   const due = t.nextDue ? `<span class="chip ${t.nextDue < dateStr() ? 'warn' : ''}">Next ${fmtDate(t.nextDue)}</span>` : '';
+  const price = t.price != null ? `<span class="num" style="font-weight:600">${baht(t.price)}</span>` : '';
   return `<li class="tap" data-treatment="${t.id}">
     <div class="grow">
       <div class="title">${typeDot(t.type)}${esc(s.title)}</div>
       <div class="meta">${showPatient ? esc(showPatient) + ' · ' : ''}${fmtDate(t.date)}${s.detail ? ' · ' + esc(s.detail) : ''}</div>
-    </div>${due}</li>`;
+    </div>${due}${price}</li>`;
 }
 
 function itemOptions(items, cats, selected) {
@@ -99,7 +100,7 @@ function datalist(id, arr) {
   return `<datalist id="${id}">${arr.map(a => `<option value="${esc(a)}">`).join('')}</datalist>`;
 }
 
-function typeForm(type, d, items, devices) {
+function typeForm(type, d, items, devices, services) {
   const rows = d.rows || [];
   switch (type) {
     case 'toxin': return `
@@ -162,7 +163,8 @@ function typeForm(type, d, items, devices) {
         <div class="total-line"><button type="button" class="btn sm" data-addrow="product">${icons.plus}Product</button></div>
       </div>`;
     default: return `
-      <div class="field"><label>Procedure</label><input name="name" value="${esc(d.name || '')}" placeholder="Thread lift"></div>
+      ${services.length ? `<div class="field"><label>From price list</label><select name="serviceId"><option value="">Choose service</option>${services.map(x => `<option value="${x.id}" ${x.id === d.serviceId ? 'selected' : ''}>${esc(x.name)} · ${baht(x.price)}</option>`).join('')}</select></div>` : ''}
+      <div class="field"><label>Service or procedure</label><input name="name" value="${esc(d.name || '')}" placeholder="Consultation"></div>
       <div class="field"><label>Details</label><textarea name="details">${esc(d.details || '')}</textarea></div>`;
   }
 }
@@ -214,13 +216,14 @@ export function openTreatment({ patientId, visitId = null, type = null, id = nul
     const t = existing || { patientId, visitId, type, date: dateStr(), data: {}, extras: [], nextDue: '', notes: '' };
     const items = await db.all('items');
     const devices = (await db.all('devices')).sort((a, b) => a.name.localeCompare(b.name));
+    const services = (await db.all('services')).sort((a, b) => a.name.localeCompare(b.name));
     const itemById = id2 => items.find(i => i.id === id2);
     const m = openModal(`
       <form class="form" novalidate>
         <div class="sheet-head">${typeDot(t.type)}<h2>${TYPES[t.type].label}</h2></div>
         <div class="sheet-body form">
           <div class="form-grid"><div class="field s4"><label>Date</label><input type="date" name="date" value="${t.date}"></div></div>
-          ${typeForm(t.type, t.data || {}, items, devices)}
+          ${typeForm(t.type, t.data || {}, items, devices, services)}
           <div class="field"><label>Consumables used</label>
             <div class="rows" data-rows="extras">${(t.extras || []).map(r => rowHTML(productFields(items, r.itemId), r)).join('')}</div>
             <div><button type="button" class="btn sm" data-addrow="extras">${icons.plus}Consumable</button></div>
@@ -231,8 +234,13 @@ export function openTreatment({ patientId, visitId = null, type = null, id = nul
           </div>
           <div class="field"><label>Notes</label><textarea name="notes" placeholder="Patient tolerated well. Review in 2 weeks.">${esc(t.notes || '')}</textarea></div>
         </div>
-        <div class="sheet-foot">
-          ${existing ? '<button type="button" class="btn danger left" data-del>Delete</button>' : ''}
+        <div class="sheet-foot" style="flex-wrap:wrap;align-items:center">
+          <div class="left" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <label class="label" for="tr-price">Charged ฿</label>
+            <input id="tr-price" name="price" type="number" inputmode="decimal" step="any" value="${esc(t.price ?? '')}" placeholder="0" style="width:130px;font-weight:700">
+            <span class="hint small muted" data-pricebasis></span>
+          </div>
+          ${existing ? '<button type="button" class="btn danger" data-del>Delete</button>' : ''}
           <button type="button" class="btn" data-close>Cancel</button>
           <button class="btn primary">Save</button>
         </div>
@@ -266,6 +274,46 @@ export function openTreatment({ patientId, visitId = null, type = null, id = nul
     };
     paintTotals();
     m.el.addEventListener('input', paintTotals);
+
+    // Charge follows the price list until it is typed over.
+    let priceTouched = t.price != null;
+    const listPrice = () => {
+      const v = n => (f[n] ? f[n].value.trim() : '');
+      const line = (it, amt) => {
+        const pr = it && pricePerUse(it);
+        return pr != null && amt ? { total: pr * amt, basis: `${fmtNum(amt)} ${it.track === 'units' ? 'U' : plural(useWord(it), amt)} × ${baht(pr)}` } : null;
+      };
+      if (t.type === 'toxin') {
+        const it = itemById(v('itemId'));
+        const units = readRows(m.el.querySelector('[data-rows=toxin]')).reduce((s2, r) => s2 + (num(r.units) || 0), 0);
+        return it ? line(it, it.track === 'units' ? units : num(v('vials'))) : null;
+      }
+      if (t.type === 'filler') { const it = itemById(v('itemId')); return it ? line(it, num(v('syringes'))) : null; }
+      if (t.type === 'medication') { const it = itemById(v('itemId')); return it ? line(it, num(v('qty'))) : null; }
+      if (t.type === 'product') {
+        const parts = readRows(m.el.querySelector('[data-rows=product]')).map(r => line(itemById(r.itemId), num(r.qty) || 1)).filter(Boolean);
+        return parts.length ? { total: parts.reduce((a, b) => a + b.total, 0), basis: parts.map(x => x.basis).join(' + ') } : null;
+      }
+      if (t.type === 'device') {
+        const dev = devices.find(x => x.id === v('deviceId'));
+        return dev && dev.price != null ? { total: dev.price, basis: `${dev.name} session ${baht(dev.price)}` } : null;
+      }
+      const sv = services.find(x => x.id === v('serviceId'));
+      return sv ? { total: sv.price, basis: `${sv.name} ${baht(sv.price)}` } : null;
+    };
+    const paintPrice = () => {
+      const lp = listPrice();
+      if (!priceTouched) f.price.value = lp ? Math.round(lp.total * 100) / 100 : '';
+      const basis = m.el.querySelector('[data-pricebasis]');
+      basis.textContent = lp ? `Price list: ${lp.basis}${priceTouched && num(f.price.value) !== Math.round(lp.total * 100) / 100 ? ` = ${baht(lp.total)}` : ''}` : 'Set prices in Stock or Settings to fill this in.';
+    };
+    f.price.addEventListener('input', () => { priceTouched = f.price.value !== ''; paintPrice(); });
+    m.el.addEventListener('input', e => { if (e.target !== f.price) paintPrice(); });
+    m.el.addEventListener('change', e => {
+      if (e.target.name === 'serviceId' && f.name) { const sv = services.find(x => x.id === e.target.value); if (sv) f.name.value = sv.name; }
+      if (e.target !== f.price) paintPrice();
+    });
+    paintPrice();
     m.el.addEventListener('click', e => {
       const add = e.target.closest('[data-addrow]');
       if (add) {
@@ -324,6 +372,7 @@ export function openTreatment({ patientId, visitId = null, type = null, id = nul
         d.rows = readRows(m.el.querySelector('[data-rows=product]'));
         for (const r of d.rows) if (r.itemId) uses.push({ itemId: r.itemId, amount: num(r.qty) || 1 });
       } else {
+        d.serviceId = val('serviceId');
         d.name = val('name'); d.details = val('details');
         if (!d.name) { toast('Name the procedure.'); return; }
       }
@@ -333,7 +382,17 @@ export function openTreatment({ patientId, visitId = null, type = null, id = nul
       const short = await shortfalls(t.moves, uses);
       if (short.length && !(await confirmBox(`${short.join('. ')}. Save anyway and let the count go below zero?`, { ok: 'Save anyway', danger: false, title: 'Not enough stock' }))) return;
 
-      Object.assign(t, { date: f.date.value || dateStr(), data: d, extras, nextDue: f.nextDue.value, notes: f.notes.value.trim() });
+      // Stock cost is fixed at save time so later price changes leave past months alone.
+      let cost = 0, costMissing = false;
+      for (const u of uses) {
+        const it = itemById(u.itemId);
+        const c = it ? costPerUse(it) : null;
+        if (c == null) costMissing = true; else cost += c * u.amount;
+      }
+      Object.assign(t, {
+        date: f.date.value || dateStr(), data: d, extras, nextDue: f.nextDue.value, notes: f.notes.value.trim(),
+        price: f.price.value === '' ? null : num(f.price.value), cost: Math.round(cost * 100) / 100, costMissing,
+      });
       if (!t.id) t.id = db.uid();
       t.moves = await syncTreatmentStock(t.moves, uses, { note: TYPES[t.type].label, patientId: t.patientId, treatmentId: t.id });
       result = await db.put('treatments', t);

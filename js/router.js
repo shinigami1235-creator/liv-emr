@@ -5,6 +5,7 @@ import visitPage from './pages/visit.js';
 import calendarPage from './pages/calendar.js';
 import { inventoryPage, itemPage } from './pages/inventory.js';
 import settingsPage from './pages/settings.js';
+import reportPage from './pages/report.js';
 
 const ROUTES = [
   [/^#\/today$/, (m) => today(m), 'today'],
@@ -16,6 +17,7 @@ const ROUTES = [
   [/^#\/calendar(?:\/([\d-]+))?$/, (m, d) => calendarPage(m, d), 'calendar'],
   [/^#\/inventory$/, (m) => inventoryPage(m), 'inventory'],
   [/^#\/item\/([^/]+)$/, (m, id) => itemPage(m, id), 'inventory'],
+  [/^#\/report(?:\/(\d{4}-\d{2}))?$/, (m, ym) => reportPage(m, ym), 'report'],
   [/^#\/settings$/, (m) => settingsPage(m), 'settings'],
 ];
 

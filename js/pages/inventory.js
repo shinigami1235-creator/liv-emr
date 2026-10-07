@@ -1,6 +1,6 @@
 import * as db from '../db.js';
-import { $, $$, esc, toast, openModal, confirmBox, fmtDate, fmtNum, num, icons, segHTML, bindSeg, segValue } from '../ui.js';
-import { CATEGORIES, COUNT_LABELS, stockText, shortStock, isLow, expiryState, openVialAge, applyChange, kindLabel, plural, sealedVials } from '../stock.js';
+import { $, $$, esc, toast, openModal, confirmBox, fmtDate, fmtNum, num, baht, icons, segHTML, bindSeg, segValue } from '../ui.js';
+import { CATEGORIES, COUNT_LABELS, stockText, shortStock, isLow, expiryState, openVialAge, applyChange, kindLabel, plural, sealedVials, costPerUse } from '../stock.js';
 import { displayName } from '../common.js';
 import { go, refresh } from '../router.js';
 
@@ -77,7 +77,9 @@ export function itemForm(item = null) {
           <div class="field s4"><label data-reorderlabel>Reorder at</label><input name="reorderAt" type="number" inputmode="decimal" step="any" value="${esc(it.reorderAt ?? '')}" placeholder="2"></div>
           <div class="field s4"><label>Lot no.</label><input name="lot" value="${esc(it.lot || '')}"></div>
           <div class="field s4"><label>Expiry</label><input name="expiry" type="date" value="${esc(it.expiry || '')}"></div>
-          <div class="field s12"><label>Notes</label><input name="notes" value="${esc(it.notes || '')}" placeholder="Supplier, price, storage"></div>
+          <div class="field s6"><label data-buylabel>Buying price (฿)</label><input name="buyPrice" type="number" inputmode="decimal" step="any" value="${esc(it.buyPrice ?? '')}" placeholder="9500"><span class="hint" data-buyhint></span></div>
+          <div class="field s6"><label data-selllabel>Selling price (฿)</label><input name="sellPrice" type="number" inputmode="decimal" step="any" value="${esc(it.sellPrice ?? '')}" placeholder="350"><span class="hint" data-sellhint></span></div>
+          <div class="field s12"><label>Notes</label><input name="notes" value="${esc(it.notes || '')}" placeholder="Supplier, storage"></div>
         </div></div>
         <div class="sheet-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary">Save</button></div>
       </form>`, { onClose: () => resolve(saved) });
@@ -89,12 +91,19 @@ export function itemForm(item = null) {
       const word = tr === 'units' ? 'vials' : plural(f.unitLabel.value, 2);
       const sl = $('[data-startlabel]', m.el); if (sl) sl.textContent = `In stock now (${word})`;
       $('[data-reorderlabel]', m.el).textContent = `Reorder at (${word})`;
+      const one = tr === 'units' ? 'vial' : f.unitLabel.value;
+      $('[data-buylabel]', m.el).textContent = `Buying price per ${one} (฿)`;
+      $('[data-selllabel]', m.el).textContent = tr === 'units' ? 'Selling price per unit (฿)' : `Selling price per ${one} (฿)`;
+      const bp = num(f.buyPrice.value), upv = num(f.upv.value) || 100;
+      $('[data-buyhint]', m.el).textContent = tr === 'units' && bp ? `Costs ${baht(bp / upv)} per unit` : ' ';
+      $('[data-sellhint]', m.el).textContent = 'Fills the charge on treatments that use it.';
       $('[data-trackhint]', m.el).textContent = tr === 'units'
         ? 'Each treatment takes its units off the open vial and opens a new vial when that runs out.'
         : 'Each treatment takes off the number of vials or pieces used.';
     };
     bindSeg(m.el, sync);
     f.unitLabel.onchange = sync;
+    f.buyPrice.oninput = sync; f.upv.oninput = sync;
     sync();
     f.onsubmit = async e => {
       e.preventDefault();
@@ -108,12 +117,16 @@ export function itemForm(item = null) {
         unitLabel: f.unitLabel.value, upv: num(f.upv.value) || 100,
         reorderAt: f.reorderAt.value === '' ? '' : num(f.reorderAt.value),
         lot: f.lot.value.trim(), expiry: f.expiry.value, notes: f.notes.value.trim(),
+        buyPrice: f.buyPrice.value === '' ? null : num(f.buyPrice.value),
+        sellPrice: f.sellPrice.value === '' ? null : num(f.sellPrice.value),
       });
       if (!item) {
         it.qty = 0; it.openLeft = 0;
         saved = await db.put('items', it);
         const start = num(f.start.value);
-        if (start) await applyChange(saved.id, track === 'units' ? start * it.upv : start, 'receive', { note: 'Opening stock' });
+        if (start) await applyChange(saved.id, track === 'units' ? start * it.upv : start, 'receive', {
+          note: 'Opening stock', opening: true, unitCost: it.buyPrice, spent: it.buyPrice != null ? start * it.buyPrice : null,
+        });
         saved = await db.get('items', saved.id);
       } else saved = await db.put('items', it);
       m.close();
@@ -123,6 +136,7 @@ export function itemForm(item = null) {
 }
 
 function qtyModal({ title, label, hint = '', value = '', withLot = false, it }) {
+  const per = it.track === 'units' ? 'vial' : it.unitLabel;
   return new Promise(resolve => {
     let out = null;
     const m = openModal(`
@@ -130,18 +144,22 @@ function qtyModal({ title, label, hint = '', value = '', withLot = false, it }) 
         <div class="sheet-head"><h2>${esc(title)}</h2></div>
         <div class="sheet-body"><div class="form-grid">
           <div class="field s12"><label>${esc(label)}</label><input name="q" type="number" inputmode="decimal" step="any" value="${esc(value)}" autofocus>${hint ? `<span class="hint">${esc(hint)}</span>` : ''}</div>
-          ${withLot ? `<div class="field"><label>Lot no.</label><input name="lot" value="${esc(it.lot || '')}"></div>
+          ${withLot ? `<div class="field"><label>Price paid per ${esc(per)} (฿)</label><input name="cost" type="number" inputmode="decimal" step="any" value="${esc(it.buyPrice ?? '')}"><span class="hint" data-costtotal> </span></div>
+            <div class="field"><label>Total paid</label><input data-totalshow disabled value=""></div>
+            <div class="field"><label>Lot no.</label><input name="lot" value="${esc(it.lot || '')}"></div>
             <div class="field"><label>Expiry</label><input name="expiry" type="date" value="${esc(it.expiry || '')}"></div>` : ''}
           <div class="field s12"><label>Note</label><input name="note" placeholder="${withLot ? 'Supplier or invoice no.' : 'Reason'}"></div>
         </div></div>
         <div class="sheet-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary">Save</button></div>
       </form>`, { onClose: () => resolve(out) });
     const f = $('form', m.el);
+    const total = () => { const t = $('[data-totalshow]', m.el); if (t) t.value = num(f.q.value) && num(f.cost.value) != null ? baht(num(f.q.value) * num(f.cost.value)) : ''; };
+    if (f.cost) { f.q.oninput = total; f.cost.oninput = total; total(); }
     f.onsubmit = e => {
       e.preventDefault();
       const q = num(f.q.value);
       if (q == null) { toast('Enter a number.'); return; }
-      out = { q, note: f.note.value.trim(), lot: f.lot ? f.lot.value.trim() : null, expiry: f.expiry ? f.expiry.value : null };
+      out = { q, note: f.note.value.trim(), lot: f.lot ? f.lot.value.trim() : null, expiry: f.expiry ? f.expiry.value : null, cost: f.cost ? num(f.cost.value) : null };
       m.close();
     };
   });
@@ -172,6 +190,8 @@ export async function itemPage(root, id) {
           <dt>Lot no.</dt><dd>${esc(it.lot || 'Not set')}</dd>
           <dt>Expiry</dt><dd>${it.expiry ? fmtDate(it.expiry) : 'Not set'}</dd>
           ${it.track === 'units' ? `<dt>Units per vial</dt><dd>${it.upv}</dd>` : ''}
+          <dt>Buying price</dt><dd>${it.buyPrice != null ? `${baht(it.buyPrice)} per ${it.track === 'units' ? 'vial' : esc(it.unitLabel)}${it.track === 'units' ? `, ${baht(costPerUse(it))} per unit` : ''}` : 'Not set'}</dd>
+          <dt>Selling price</dt><dd>${it.sellPrice != null ? `${baht(it.sellPrice)} per ${it.track === 'units' ? 'unit' : esc(it.unitLabel)}` : 'Not set'}</dd>
           ${it.notes ? `<dt>Notes</dt><dd>${esc(it.notes)}</dd>` : ''}
         </dl>
       </section>
@@ -186,6 +206,7 @@ export async function itemPage(root, id) {
       ${log.length ? log.map(l => `<li>
         <div class="grow"><div class="title">${kindLabel(l.kind)} <span class="num" style="color:${l.change < 0 ? 'var(--danger)' : 'var(--ok)'}">${l.change > 0 ? '+' : ''}${fmtNum(l.change)} ${unitWord(l.change)}</span></div>
           <div class="meta">${fmtDate(l.at.slice(0, 10))}${l.patientId && P[l.patientId] ? ` · <a href="#/patient/${l.patientId}">${esc(displayName(P[l.patientId]))}</a>` : ''}${l.note ? ' · ' + esc(l.note) : ''}</div></div>
+        ${l.spent != null ? `<span class="num ${l.opening ? 'muted' : ''}">${baht(l.spent)}</span>` : ''}
       </li>`).join('') : '<li class="empty">No movements yet.</li>'}
     </ul></section>
     <div class="actions"><button class="btn danger" data-act="delete">${icons.trash}Delete item</button></div>`;
@@ -198,13 +219,14 @@ export async function itemPage(root, id) {
     else if (act === 'receive') {
       const r = await qtyModal({ title: 'Receive stock', label: it.track === 'units' ? 'Vials received' : `${plural(it.unitLabel, 2)} received`, withLot: true, it });
       if (!r) return;
-      if (r.lot != null || r.expiry != null) {
-        const cur = await db.get('items', id);
-        if (r.lot) cur.lot = r.lot;
-        if (r.expiry) cur.expiry = r.expiry;
-        await db.put('items', cur);
-      }
-      await applyChange(id, it.track === 'units' ? r.q * it.upv : r.q, 'receive', { note: r.note });
+      const cur = await db.get('items', id);
+      if (r.lot) cur.lot = r.lot;
+      if (r.expiry) cur.expiry = r.expiry;
+      if (r.cost != null) cur.buyPrice = r.cost;
+      await db.put('items', cur);
+      await applyChange(id, it.track === 'units' ? r.q * it.upv : r.q, 'receive', {
+        note: r.note, unitCost: r.cost, spent: r.cost != null ? r.q * r.cost : null,
+      });
       toast('Stock added.'); refresh();
     } else if (act === 'adjust') {
       const r = await qtyModal({

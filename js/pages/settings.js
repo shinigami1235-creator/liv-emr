@@ -1,9 +1,9 @@
 import * as db from '../db.js';
-import { $, esc, toast, openModal, confirmBox, dateStr, fmtDate, daysBetween, icons } from '../ui.js';
+import { $, esc, toast, openModal, confirmBox, dateStr, fmtDate, daysBetween, num, baht, icons } from '../ui.js';
 import { hashPin, setPin, lockNow } from '../lock.js';
 import { refresh } from '../router.js';
 
-export const VERSION = '1.0.0';
+export const VERSION = '1.1.0';
 const DEVICE_TYPES = ['Laser', 'IPL', 'Radiofrequency', 'HIFU', 'Microneedling RF', 'LED', 'Cryolipolysis', 'Other'];
 
 function blobToDataURL(blob) {
@@ -71,7 +71,8 @@ function deviceForm(dev = null) {
           <div class="field s8"><label>Name</label><input name="name" value="${esc(d.name || '')}" placeholder="PicoWay" autofocus></div>
           <div class="field s4"><label>Brand</label><input name="brand" value="${esc(d.brand || '')}" placeholder="Candela"></div>
           <div class="field s12"><label>Type</label><select name="type">${DEVICE_TYPES.map(t => `<option ${t === d.type ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
-          <div class="field s12"><label>Wavelengths or handpieces</label><input name="spec" value="${esc(d.spec || '')}" placeholder="532, 785, 1064 nm. Resolve fractional handpiece."></div>
+          <div class="field s8"><label>Wavelengths or handpieces</label><input name="spec" value="${esc(d.spec || '')}" placeholder="532, 785, 1064 nm. Resolve fractional handpiece."></div>
+          <div class="field s4"><label>Price per session (฿)</label><input name="price" type="number" inputmode="decimal" step="any" value="${esc(d.price ?? '')}" placeholder="4500"></div>
         </div></div>
         <div class="sheet-foot">${dev ? '<button type="button" class="btn danger left" data-del>Delete</button>' : ''}
           <button type="button" class="btn" data-close>Cancel</button><button class="btn primary">Save</button></div>
@@ -84,8 +85,38 @@ function deviceForm(dev = null) {
     f.onsubmit = async e => {
       e.preventDefault();
       if (!f.name.value.trim()) { toast('Enter the device name.'); return; }
-      Object.assign(d, { name: f.name.value.trim(), brand: f.brand.value.trim(), type: f.type.value, spec: f.spec.value.trim() });
+      Object.assign(d, { name: f.name.value.trim(), brand: f.brand.value.trim(), type: f.type.value, spec: f.spec.value.trim(), price: f.price.value === '' ? null : num(f.price.value) });
       saved = await db.put('devices', d);
+      m.close();
+    };
+  });
+}
+
+function serviceForm(sv = null) {
+  return new Promise(resolve => {
+    let saved = null;
+    const d = sv || {};
+    const m = openModal(`
+      <form class="form" novalidate>
+        <div class="sheet-head"><h2>${sv ? 'Edit service' : 'Add service'}</h2></div>
+        <div class="sheet-body"><div class="form-grid">
+          <div class="field s8"><label>Service</label><input name="svc" value="${esc(d.name || '')}" placeholder="Consultation" autofocus></div>
+          <div class="field s4"><label>Price (฿)</label><input name="price" type="number" inputmode="decimal" step="any" value="${esc(d.price ?? '')}" placeholder="500"></div>
+        </div></div>
+        <div class="sheet-foot">${sv ? '<button type="button" class="btn danger left" data-del>Delete</button>' : ''}
+          <button type="button" class="btn" data-close>Cancel</button><button class="btn primary">Save</button></div>
+      </form>`, { onClose: () => resolve(saved) });
+    const f = $('form', m.el);
+    const del = $('[data-del]', m.el);
+    if (del) del.onclick = async () => {
+      if (await confirmBox(`Delete ${sv.name} from the price list? Past treatments keep their charge.`)) { await db.del('services', sv.id); saved = { deleted: true }; m.close(); }
+    };
+    f.onsubmit = async e => {
+      e.preventDefault();
+      if (!f.svc.value.trim()) { toast('Enter the service name.'); return; }
+      if (num(f.price.value) == null) { toast('Enter the price.'); return; }
+      Object.assign(d, { name: f.svc.value.trim(), price: num(f.price.value) });
+      saved = await db.put('services', d);
       m.close();
     };
   });
@@ -118,6 +149,7 @@ function changePin() {
 export default async function settingsPage(root) {
   const s = await db.getSettings();
   const devices = (await db.all('devices')).sort((a, b) => a.name.localeCompare(b.name));
+  const services = (await db.all('services')).sort((a, b) => a.name.localeCompare(b.name));
   let usage = '';
   if (navigator.storage && navigator.storage.estimate) {
     const est = await navigator.storage.estimate();
@@ -139,8 +171,13 @@ export default async function settingsPage(root) {
 
     <section class="card"><h2>Lasers and devices <button class="btn sm" data-act="adddev">${icons.plus}Add device</button></h2>
       <ul class="list">${devices.length ? devices.map(d => `<li class="tap" data-dev="${d.id}"><div class="grow"><div class="title">${esc(d.name)}</div>
-        <div class="meta">${esc([d.brand, d.type, d.spec].filter(Boolean).join(' · '))}</div></div>${icons.chev.replace('<svg', '<svg style="width:18px;height:18px;color:var(--muted)"')}</li>`).join('')
+        <div class="meta">${esc([d.brand, d.type, d.spec].filter(Boolean).join(' · '))}</div></div>${d.price != null ? `<span class="num">${baht(d.price)}</span>` : ''}${icons.chev.replace('<svg', '<svg style="width:18px;height:18px;color:var(--muted)"')}</li>`).join('')
         : '<li class="empty">No devices yet. Laser treatments pick from this list.</li>'}</ul>
+    </section>
+
+    <section class="card"><h2>Services price list <button class="btn sm" data-act="addsvc">${icons.plus}Add service</button></h2>
+      <ul class="list">${services.length ? services.map(x => `<li class="tap" data-svc="${x.id}"><div class="grow"><div class="title">${esc(x.name)}</div></div><span class="num">${baht(x.price)}</span></li>`).join('')
+        : '<li class="empty">No services yet. Add consultation fees and procedures not tied to stock, such as a thread lift or a facial.</li>'}</ul>
     </section>
 
     <section class="card"><h2>Clinic</h2>
@@ -167,13 +204,15 @@ export default async function settingsPage(root) {
   };
 
   root.onclick = async e => {
-    const a = e.target.closest('[data-act], [data-dev]');
+    const a = e.target.closest('[data-act], [data-dev], [data-svc]');
     if (!a) return;
+    if (a.dataset.svc) { if (await serviceForm(services.find(x => x.id === a.dataset.svc))) refresh(); return; }
     if (a.dataset.dev) { if (await deviceForm(devices.find(d => d.id === a.dataset.dev))) refresh(); return; }
     switch (a.dataset.act) {
       case 'lock': lockNow(); break;
       case 'pin': changePin(); break;
       case 'adddev': if (await deviceForm()) refresh(); break;
+      case 'addsvc': if (await serviceForm()) refresh(); break;
       case 'backup':
         a.disabled = true; a.textContent = 'Preparing';
         try { if (await exportBackup()) toast('Backup saved.'); }
